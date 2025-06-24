@@ -3,115 +3,73 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import mean_squared_error, accuracy_score
 import statsmodels.api as sm
-import scipy.stats as stats
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.compose import ColumnTransformer
 
-# Ruta del archivo
+#Ruta del archivo
 ruta = "SaberProFiltered.xlsx"
 
-# Columnas deseadas, incluyendo las variables socioeconómicas y percentiles, excluyendo puntajes por asignatura
+#Categorias de las variables
 columnas_iniciales_deseadas = [
-    "percentil_global",
     "punt_global",
     "periodo",
-    "estu_valormatriculauniversidad", # Cuánto paga (categórica)
-    "estu_pagomatriculabeca",         # De dónde se paga: Beca (binaria)
-    "estu_pagomatriculacredito",      # De dónde se paga: Crédito (binaria)
-    "estu_pagomatriculapadres",       # De dónde se paga: Padres (binaria)
-    "estu_pagomatriculapropio",       # De dónde se paga: Propio (binaria)
-    "fami_educacionpadre",            # Educación de los padres (categórica)
-    "fami_educacionmadre",            # Educación de la madre (categórica)
-    "estu_horassemanatrabaja",       # Horas que trabaja (numérica, pero puede ser object)
-    "fami_estratovivienda",           # Estrato (categórica)
-    "fami_tieneinternet",             # Conexión a internet (binaria)
-    "fami_tienecomputador",           # Computador (binaria)
-    "fami_tienelavadora",             # Lavadora (binaria)
-    "fami_tienehornomicroogas",       # Horno microondas (binaria)
-    "fami_tieneserviciotv",           # Servicio de TV (binaria)
-    "fami_tieneautomovil",            # Vehículo (auto) (binaria)
-    "fami_tienemotocicleta",          # Vehículo (moto) (binaria)
-    "fami_tieneconsolavideojuegos",   # Consola de videojuegos (binaria)
+    "estu_valormatriculauniversidad", #Categorica
+    "estu_pagomatriculabeca",          #Binaria
+    "estu_pagomatriculacredito",       #Binaria
+    "estu_pagomatriculapadres",        #Binaria
+    "estu_pagomatriculapropio",        #Binaria
+    "fami_educacionpadre",             #Categorica
+    "fami_educacionmadre",             #Categorica
+    "estu_horassemanatrabaja",         #Categorica
+    "fami_estratovivienda",            #Categorica
+    "fami_tieneinternet",              #Binaria
+    "fami_tienecomputador",            #Binaria
+    "fami_tienelavadora",              #Binaria
+    "fami_tienehornomicroogas",        #Binaria
+    "fami_tieneserviciotv",            #Binaria
+    "fami_tieneautomovil",             #Binaria
+    "fami_tienemotocicleta",           #Binaria
+    "fami_tieneconsolavideojuegos",    #Binaria
 ]
 
 try:
     df = pd.read_excel(ruta, usecols=columnas_iniciales_deseadas)
     print("DataFrame cargado exitosamente, primeros datos: ")
     print(df.head())
-    print("\nInformación inicial del DataFrame:")
-    df.info()
 except FileNotFoundError:
-    print(f"Error: El archivo '{ruta}' no fue encontrado.")
+    print("Error")
     exit()
 except ValueError as e:
     print(f"Error al cargar las columnas: {e}")
-    print(
-        "Asegúrate de que todos los nombres en 'columnas_iniciales_deseadas' existan en tu archivo Excel y estén escritos exactamente igual."
-    )
     exit()
 
-### Preprocesamiento de Datos
 
-print("\n--- Preprocesamiento de Datos ---")
+#Preprocesamiento de datos
 
-# Identificar tipos de columnas para un manejo adecuado
-# Estas columnas categóricas se combinarán antes de One-Hot Encoding
-categorical_cols_to_combine = [
-    "estu_valormatriculauniversidad",
-    "fami_educacionpadre",
-    "fami_educacionmadre",
-    "fami_estratovivienda",
-]
+#Puntaje global y periodo
+if "punt_global" in df.columns:
+    df["punt_global"] = pd.to_numeric(df["punt_global"], errors="coerce")
+else:
+    print(f"Advertencia: La columna 'punt_global' no se encontró en el DataFrame.")
 
-# Las columnas binarias 'Si'/'No' se mapearán a 1/0
+if "periodo" in df.columns:
+    df["periodo"] = pd.to_numeric(df["periodo"], errors="coerce")
+    if df["periodo"].isnull().any():
+        df["periodo"] = df["periodo"].fillna(df["periodo"].mode()[0])
+    df["periodo"] = df["periodo"].astype(int)
+else:
+    print(f"Advertencia: La columna 'periodo' no se encontró en el DataFrame.")
+
+#Columnas binarias
 binary_cols = [
-    "estu_pagomatriculabeca",
-    "estu_pagomatriculacredito",
-    "estu_pagomatriculapadres",
-    "estu_pagomatriculapropio",
-    "fami_tieneinternet",
-    "fami_tienecomputador",
-    "fami_tienelavadora",
-    "fami_tienehornomicroogas",
-    "fami_tieneserviciotv",
-    "fami_tieneautomovil",
-    "fami_tienemotocicleta",
+    "estu_pagomatriculabeca", "estu_pagomatriculacredito",
+    "estu_pagomatriculapadres", "estu_pagomatriculapropio",
+    "fami_tieneinternet", "fami_tienecomputador", "fami_tienelavadora",
+    "fami_tienehornomicroogas", "fami_tieneserviciotv",
+    "fami_tieneautomovil", "fami_tienemotocicleta",
     "fami_tieneconsolavideojuegos",
 ]
 
-# Columnas que deberían ser numéricas pero podrían cargarse como 'object'
-numeric_might_be_object_cols = [
-    "estu_horassemanatrabaja",
-]
-
-# Convertir columnas que deben ser numéricas (y no son categóricas ni binarias)
-for col in ["punt_global", "percentil_global", "percentil_nbc"] + numeric_might_be_object_cols:
-    if col in df.columns:
-        if pd.api.types.is_numeric_dtype(df[col]):
-            print(f"Columna '{col}' ya es numérica ({df[col].dtype}).")
-        else:
-            print(f"La columna '{col}' no es numérica ({df[col].dtype}). Intentando convertir a numérica...")
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-            if df[col].isnull().any():
-                print(f"  Advertencia: Después de la conversión, la columna '{col}' ahora tiene valores nulos.")
-            else:
-                print(f"  Columna '{col}' convertida a numérica exitosamente.")
-
-# Manejo de la columna 'periodo'
-if "periodo" in df.columns:
-    if not pd.api.types.is_integer_dtype(df["periodo"]):
-        print(f"La columna 'periodo' no es de tipo entero ({df['periodo'].dtype}). Intentando convertir a entero...")
-        df["periodo"] = pd.to_numeric(df["periodo"], errors="coerce").astype(pd.Int64Dtype())
-        if df["periodo"].isnull().any():
-            print(f"  Advertencia: Después de la conversión, la columna 'periodo' ahora tiene valores nulos.")
-        else:
-            print(f"  Columna 'periodo' convertida a entero exitosamente.")
-    else:
-        print(f"Columna 'periodo' ya es de tipo entero ({df['periodo'].dtype}).")
-
-# Mapear las columnas binarias 'Si'/'No' a 1/0 y manejar nulos
 for col in binary_cols:
     if col in df.columns:
         df[col] = df[col].astype(str).str.strip().str.lower()
@@ -119,179 +77,118 @@ for col in binary_cols:
         if df[col].isnull().any():
             if not df[col].mode().empty:
                 df[col] = df[col].fillna(df[col].mode()[0])
-                print(f"Columna '{col}' mapeada a 1/0 y nulos rellenados con la moda.")
             else:
                 df[col] = df[col].fillna(0)
-                print(f"Columna '{col}' mapeada a 1/0 y nulos rellenados con 0 (moda no disponible).")
+        df[col] = df[col].astype(int)
     else:
         print(f"Advertencia: La columna binaria '{col}' no se encontró en el DataFrame.")
 
-
-### Combinación de Categorías para variables específicas
-
-print("\n--- Combinando Categorías en Variables Socioeconómicas ---")
-
-# estu_valormatriculauniversidad
-if "estu_valormatriculauniversidad" in df.columns:
-    print("Combinando categorías para 'estu_valormatriculauniversidad'...")
-    df['estu_valormatriculauniversidad'] = df['estu_valormatriculauniversidad'].astype(str).str.strip().str.lower()
-    mapping_matricula = {
-        'no pagó matrícula': 'No pagó',
-        'no pagó matricula': 'No pagó', # Considerar posibles inconsistencias
-        'menos de 500 mil': 'Menos de 1 millón',
-        'entre 500 mil y menos de 1 millón': 'Menos de 1 millón',
-        'entre 1 millón y menos de 2.5 millones': 'Entre 1 y 4 millones',
-        'entre 2.5 millones y menos de 4 millones': 'Entre 1 y 4 millones',
-        'entre 4 millones y menos de 5.5 millones': 'Más de 4 millones',
-        'entre 5.5 millones y menos de 7 millones': 'Más de 4 millones',
-        'más de 7 millones': 'Más de 4 millones',
-        'nan': np.nan # Asegurar que los nulos sigan siendo nulos para la imputación
-    }
-    df['estu_valormatriculauniversidad'] = df['estu_valormatriculauniversidad'].replace(mapping_matricula)
-    print(f"Nuevas categorías para 'estu_valormatriculauniversidad': {df['estu_valormatriculauniversidad'].unique()}")
-else:
-    print("Columna 'estu_valormatriculauniversidad' no encontrada para combinación.")
-
-# fami_educacionpadre y fami_educacionmadre
-education_mapping = {
-    'no aplica': 'No aplica', # 'No aplica' para quienes no tienen padre/madre
-    'no sabe': 'No sabe',
-    'ninguno': 'Ninguno/Primaria',
-    'primaria incompleta': 'Ninguno/Primaria',
-    'primaria completa': 'Ninguno/Primaria',
-    'secundaria incompleta': 'Secundaria/Media',
-    'secundaria completa': 'Secundaria/Media',
-    'técnica o tecnológica incompleta': 'Técnica/Tecnológica',
-    'técnica o tecnológica completa': 'Técnica/Tecnológica',
-    'universitaria incompleta': 'Universitaria/Posgrado',
-    'universitaria completa': 'Universitaria/Posgrado',
-    'posgrado': 'Universitaria/Posgrado',
-    'nan': np.nan # Asegurar que los nulos sigan siendo nulos para la imputación
+#Columnas categoricas
+education_order = {
+    'no aplica': 0, 'no sabe': 0,
+    'ninguno': 1,
+    'primaria incompleta': 2,
+    'primaria completa': 3,
+    'secundaria incompleta': 4,
+    'secundaria completa': 5,
+    'técnica o tecnológica incompleta': 6,
+    'técnica o tecnológica completa': 7,
+    'universitaria incompleta': 8,
+    'universitaria completa': 9,
+    'postgrado': 10,
+    np.nan: np.nan
 }
 
 for col in ["fami_educacionpadre", "fami_educacionmadre"]:
     if col in df.columns:
-        print(f"Combinando categorías para '{col}'...")
         df[col] = df[col].astype(str).str.strip().str.lower()
-        df[col] = df[col].replace(education_mapping)
-        print(f"Nuevas categorías para '{col}': {df[col].unique()}")
+        df[col] = df[col].replace('primaria incompleta', 'primaria incompleta')
+        df[col] = df[col].map(education_order)
+        df[col] = df[col].astype(float) 
     else:
-        print(f"Columna '{col}' no encontrada para combinación.")
+        print(f"Columna '{col}' no encontrada para mapeo.")
 
-# fami_estratovivienda
-if "fami_estratovivienda" in df.columns:
-    print("Combinando categorías para 'fami_estratovivienda'...")
-    df['fami_estratovivienda'] = df['fami_estratovivienda'].astype(str).str.strip().str.lower()
-    estrato_mapping = {
-        'estrato 1': 'Estratos 1-2',
-        'estrato 2': 'Estratos 1-2',
-        'estrato 3': 'Estratos 3-4',
-        'estrato 4': 'Estratos 3-4',
-        'estrato 5': 'Estratos 5-6',
-        'estrato 6': 'Estratos 5-6',
-        'nan': np.nan # Asegurar que los nulos sigan siendo nulos para la imputación
-    }
-    df['fami_estratovivienda'] = df['fami_estratovivienda'].replace(estrato_mapping)
-    # También maneja el caso de 'Sin Estrato' o similares si aparecen
-    df['fami_estratovivienda'] = df['fami_estratovivienda'].replace({'sin estrato': 'Sin Estrato', 'zona rural': 'Zona Rural'})
-    print(f"Nuevas categorías para 'fami_estratovivienda': {df['fami_estratovivienda'].unique()}")
+hours_mapping = {
+    '0': 0, 'cero': 0,
+    'menos de 10 horas': 1,
+    'entre 11 y 20 horas': 2,
+    'entre 21 y 30 horas': 3,
+    'más de 30 horas': 4,
+    'nan': np.nan
+}
+if "estu_horassemanatrabaja" in df.columns:
+    df['estu_horassemanatrabaja'] = df['estu_horassemanatrabaja'].astype(str).str.strip().str.lower()
+    df['estu_horassemanatrabaja'] = df['estu_horassemanatrabaja'].map(hours_mapping)
+    df['estu_horassemanatrabaja'] = df['estu_horassemanatrabaja'].astype(float)
 else:
-    print("Columna 'fami_estratovivienda' no encontrada para combinación.")
+    print("Columna 'estu_horassemanatrabaja' no encontrada para mapeo.")
 
-# Las columnas categóricas para One-Hot Encoding ahora usan las combinadas
-categorical_cols_for_ohe = [
-    "estu_valormatriculauniversidad",
+estrato_mapping = {
+    'estrato 1': 1, 'estrato 2': 2, 'estrato 3': 3,
+    'estrato 4': 4, 'estrato 5': 5, 'estrato 6': 6,
+    'sin estrato': 0, 'zona rural': 0,
+    'nan': np.nan
+}
+
+if "fami_estratovivienda" in df.columns:
+    df['fami_estratovivienda'] = df['fami_estratovivienda'].astype(str).str.strip().str.lower()
+    df['fami_estratovivienda'] = df['fami_estratovivienda'].map(estrato_mapping)
+    df['fami_estratovivienda'] = df['fami_estratovivienda'].astype(float)
+else:
+    print("Columna 'fami_estratovivienda' no encontrada para mapeo.")
+
+matricula_mapping = {
+    'no pagó matrícula': 0, 'no pagó matricula': 0,
+    'menos de 500 mil': 1,
+    'entre 500 mil y menos de 1 millón': 2,
+    'entre 1 millón y menos de 2.5 millones': 3,
+    'entre 2.5 millones y menos de 4 millones': 4,
+    'entre 4 millones y menos de 5.5 millones': 5,
+    'entre 5.5 millones y menos de 7 millones': 6,
+    'más de 7 millones': 7,
+    'nan': np.nan
+}
+if "estu_valormatriculauniversidad" in df.columns:
+    df['estu_valormatriculauniversidad'] = df['estu_valormatriculauniversidad'].astype(str).str.strip().str.lower()
+    df['estu_valormatriculauniversidad'] = df['estu_valormatriculauniversidad'].map(matricula_mapping)
+    df['estu_valormatriculauniversidad'] = df['estu_valormatriculauniversidad'].astype(float)
+else:
+    print("Columna 'estu_valormatriculauniversidad' no encontrada para mapeo.")
+
+imputable_numeric_cols = [
+    "punt_global",
+    "estu_horassemanatrabaja",
     "fami_educacionpadre",
     "fami_educacionmadre",
     "fami_estratovivienda",
+    "estu_valormatriculauniversidad"
 ]
 
-# --- IMPUTACIÓN DE NULOS EN COLUMNAS NUMÉRICAS Y CATEGÓRICAS ANTES DE OHE ---
-print("\n--- Imputando Nulos después de la combinación de categorías ---")
-
-# Imputar nulos en 'estu_horassemanatrabaja' con la mediana
-if 'estu_horassemanatrabaja' in df.columns and df['estu_horassemanatrabaja'].isnull().any():
-    median_hours = df['estu_horassemanatrabaja'].median()
-    df['estu_horassemanatrabaja'] = df['estu_horassemanatrabaja'].fillna(median_hours)
-    print(f"Columna 'estu_horassemanatrabaja': Nulos imputados con la mediana ({median_hours}).")
-
-# Imputar nulos en columnas categóricas (ahora con las categorías combinadas) con la moda
-for col in categorical_cols_for_ohe:
+for col in imputable_numeric_cols:
     if col in df.columns and df[col].isnull().any():
-        if not df[col].mode().empty:
-            mode_val = df[col].mode()[0]
-            df[col] = df[col].fillna(mode_val)
-            print(f"Columna '{col}': Nulos imputados con la moda ('{mode_val}').")
+        median_val = df[col].median()
+        if pd.isna(median_val):
+            df[col] = df[col].fillna(0.0)
         else:
-            print(f"Advertencia: Columna '{col}' tiene todos sus valores nulos después de la combinación y no se puede imputar con la moda. Se mantendrán los nulos para el One-Hot Encoder (se manejará con 'handle_unknown').")
-            # Para estas columnas, 'handle_unknown='ignore'' en OneHotEncoder significa que los nulos resultantes se tratarán como una categoría desconocida.
-            # Sin embargo, es mejor imputarlos para evitar problemas. Si un column tiene todos los valores nulos, OneHotEncoder puede fallar o crear una columna de ceros.
-            # Una opción sería imputar con 'Desconocido' o eliminar la columna si es el caso.
-            # Por ahora, simplemente dejamos los nulos si mode() está vacío, y OneHotEncoder los manejará si la columna no es completamente nula.
+            df[col] = df[col].fillna(median_val)
+            print(f"Columna '{col}': Nulos imputados con la mediana ({median_val}).")
+        if col != "punt_global":
+            df[col] = df[col].astype(int)
 
-# Imputar nulos en 'percentil_global' y 'percentil_nbc' si existen
-for col in ["percentil_global", "percentil_nbc"]:
-    if col in df.columns and df[col].isnull().any():
-        median_percentil = df[col].median()
-        df[col] = df[col].fillna(median_percentil)
-        print(f"Columna '{col}': Nulos imputados con la mediana ({median_percentil:.2f}).")
-
-
-# Seleccionar solo las columnas que realmente existen en el DataFrame para One-Hot Encoding
-categorical_cols_existing = [col for col in categorical_cols_for_ohe if col in df.columns]
-
-# Manejo de One-Hot Encoding para las columnas categóricas
-if categorical_cols_existing:
-    print(f"\nAplicando One-Hot Encoding a: {categorical_cols_existing}")
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), categorical_cols_existing)
-        ],
-        remainder='passthrough'
-    )
-
-    temp_df = df.drop(columns=["punt_global", "periodo"], errors='ignore')
-    X_processed = preprocessor.fit_transform(temp_df)
-    ohe_feature_names = preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_cols_existing)
-    passthrough_cols = [col for col in temp_df.columns if col not in categorical_cols_existing and col in df.columns]
-
-    new_column_names = list(ohe_feature_names) + passthrough_cols
-    df_encoded = pd.DataFrame(X_processed, columns=new_column_names, index=df.index)
-
-    for col in ["punt_global", "periodo"]:
-        if col in df.columns:
-            df_encoded[col] = df[col]
-    df = df_encoded
-    print(f"DataFrame después de One-Hot Encoding. Nuevas dimensiones: {df.shape}")
-    print(df.head())
-else:
-    print("\nNo se encontraron columnas categóricas para One-Hot Encoding en el DataFrame.")
-
-# Comprobar nulos después de la codificación y mapeo
+#Eliminacion de nulos restantes
 original_rows = df.shape[0]
-df.dropna(inplace=True)
-rows_after_dropna = df.shape[0]
-print(
-    f"\nFilas originales: {original_rows}, Filas después de eliminar nulos: {rows_after_dropna} ---"
-)
-if df.empty:
-    print("Error: DataFrame vacío después de eliminar nulos. ¡Esto no debería pasar si la imputación funcionó correctamente!")
-    exit()
-
-# Última verificación de nulos
 if df.isnull().sum().sum() > 0:
-    print("Error: Nulos presentes después de la limpieza final. Detalles:")
-    print(df.isnull().sum()[df.isnull().sum() > 0])
+    df.dropna(inplace=True)
+rows_after_dropna = df.shape[0]
+
+if df.empty:
+    print("Error")
     exit()
-else:
-    print("No nulos después del preprocesamiento.")
 
-### Análisis de Correlación
 
-print("\n--- Análisis de Correlación ---")
+#Analisis de correlacion
 df_for_corr = df.drop(columns=["periodo"], errors="ignore")
 
-print("Matriz de Correlación de Variables Numéricas (excluyendo 'periodo')")
 matriz_correlacion = df_for_corr.corr(numeric_only=True)
 
 plt.figure(figsize=(16, 14))
@@ -323,24 +220,13 @@ correlaciones_con_dependiente = correlaciones_con_dependiente[
 
 if len(correlaciones_con_dependiente) >= 5:
     top_n_variables = correlaciones_con_dependiente.head(10).index.tolist()
-    print(
-        f"Las {len(top_n_variables)} variables independientes más correlacionadas con '{variable_dependiente}' son: {top_n_variables}"
-    )
-    print("Sus correlaciones son:")
-    for var in top_n_variables:
-        print(f"  {var}: {matriz_correlacion.loc[variable_dependiente, var]:.4f}")
 elif len(correlaciones_con_dependiente) > 0:
     top_n_variables = correlaciones_con_dependiente.index.tolist()
-    print(
-        f"Menos de 5 variables más correlacionadas, se seleccionarán todas las variables independientes correlacionadas: {top_n_variables}"
-    )
-    print("Sus correlaciones son:")
-    for var in top_n_variables:
-        print(f"  {var}: {matriz_correlacion.loc[variable_dependiente, var]:.4f}")
 else:
     print("Error: No se encontraron variables con correlación para el modelo.")
     exit()
 
+#Division de datos
 variables_independientes_seleccionadas = top_n_variables
 
 X = df[variables_independientes_seleccionadas]
@@ -348,12 +234,7 @@ y = df[variable_dependiente]
 
 print(f"\nVariable dependiente '{variable_dependiente}' tipo de dato: {y.dtype}")
 print(f"Variables independientes (X) seleccionadas: {X.columns.tolist()}")
-print(f"Dimensiones de X: {X.shape}, Dimensiones de y: {y.shape}")
 
-
-### División de Datos
-
-print("\n--- División de Datos ---")
 periodos_entrenamiento = [20222, 20223, 20225, 20226, 20231, 20232]
 periodos_prueba = [20233, 20234]
 
@@ -377,14 +258,10 @@ y_train = df_train[variable_dependiente]
 X_test = df_test[variables_independientes_seleccionadas]
 y_test = df_test[variable_dependiente]
 
-print(
-    f"Tamaño del conjunto de entrenamiento X_train: {X_train.shape} (Periodos: {periodos_entrenamiento})"
-)
-print(
-    f"Tamaño del conjunto de prueba X_test: {X_test.shape} (Periodos: {periodos_prueba})"
-)
-print(f"Tamaño del conjunto de entrenamiento y_train: {y_train.shape}")
-print(f"Tamaño del conjunto de prueba y_test: {y_test.shape}")
+print(f"Tamaño del conjunto de entrenamiento: {X_train.shape} (Periodos: {periodos_entrenamiento})")
+print(f"Tamaño del conjunto de prueba: {X_test.shape} (Periodos: {periodos_prueba})")
+print(f"Tamaño del conjunto de entrenamiento: {y_train.shape}")
+print(f"Tamaño del conjunto de prueba: {y_test.shape}")
 
 total_rows = df.shape[0]
 train_percentage = (X_train.shape[0] / total_rows) * 100
@@ -409,37 +286,49 @@ if y_test.isnull().sum() > 0:
     print(y_test.isnull().sum())
     exit()
 
-### Modelo de Regresión Lineal Múltiple
-
-print("\n--- Modelo de Regresión Lineal Múltiple ---")
+#Regresion lineal multiple
 modelo_rl = LinearRegression()
 modelo_rl.fit(X_train, y_train)
 
 y_pred = modelo_rl.predict(X_test)
 
-print(f"\nCoeficientes (modelo_rl.coef_): {modelo_rl.coef_}")
-print(f"Intercepto (modelo_rl.intercept_): {modelo_rl.intercept_}")
+print(f"\nCoeficientes: {modelo_rl.coef_}")
+print(f"Intercepto: {modelo_rl.intercept_}")
 
 ecuacion = f"ŷ = {modelo_rl.intercept_:.2f}"
 for i, col in enumerate(X_train.columns):
     ecuacion += f" + {modelo_rl.coef_[i]:.4f} * {col}"
 print(f"\nEcuación de regresión: {ecuacion}")
 
+def categorize_score(score):
+    if 0 <= score <= 60:
+        return "Nivel Bajo"
+    elif 60 < score <= 120:
+        return "Medio Bajo"
+    elif 120 < score <= 180:
+        return "Nivel Medio"
+    elif 180 < score <= 240:
+        return "Medio Alto"
+    elif 240 < score <= 300:
+        return "Nivel Alto"
+    else:
+        return "Fuera de Rango"
 
-### Evaluación del Modelo
+y_pred_category = np.vectorize(categorize_score)(y_pred)
+y_test_category = np.vectorize(categorize_score)(y_test)
 
-print("\n--- Evaluación del Modelo ---")
-r_squared_test = r2_score(y_test, y_pred)
+#Evaluacion de precision por categoria
+min_len = min(len(y_test_category), len(y_pred_category))
+accuracy_category = accuracy_score(y_test_category[:min_len], y_pred_category[:min_len])
+
+print(f"Porcentaje de exito basado en categoria: {accuracy_category:.4f}")
 mse = mean_squared_error(y_test, y_pred)
 rmse = np.sqrt(mse)
-
-print(f"\nPrecisión (R-cuadrado en el conjunto de prueba): {r_squared_test:.4f}")
 print(f"Error Cuadrático Medio (MSE): {mse:.2f}")
 print(f"Raíz del Error Cuadratico Medio (RMSE): {rmse:.2f}")
 
-### Gráficos de Diagnóstico
 
-print("\n--- Gráficos de Diagnóstico ---")
+#Graficos de diagnostico
 residuals = y_test - y_pred
 standardized_residuals = residuals / np.std(residuals)
 
