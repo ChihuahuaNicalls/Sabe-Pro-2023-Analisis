@@ -2,34 +2,36 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-from sklearn.linear_model import LinearRegression
+from sklearn.neighbors import KNeighborsRegressor # Importar KNeighborsRegressor
 from sklearn.metrics import mean_squared_error, accuracy_score
 import statsmodels.api as sm
+from sklearn.preprocessing import StandardScaler # Necesario para KNN
 
-#Ruta del archivo
+# Ruta del archivo
 ruta = "SaberProFiltered.xlsx"
 
-#Categorias de las variables
+# Categorias de las variables
 columnas_iniciales_deseadas = [
     "punt_global",
+    "percentil_nbc",
     "periodo",
     "estu_valormatriculauniversidad", #Categorica
-    "estu_pagomatriculabeca",          #Binaria
-    "estu_pagomatriculacredito",       #Binaria
-    "estu_pagomatriculapadres",        #Binaria
-    "estu_pagomatriculapropio",        #Binaria
-    "fami_educacionpadre",             #Categorica
-    "fami_educacionmadre",             #Categorica
-    "estu_horassemanatrabaja",         #Categorica
-    "fami_estratovivienda",            #Categorica
-    "fami_tieneinternet",              #Binaria
-    "fami_tienecomputador",            #Binaria
-    "fami_tienelavadora",              #Binaria
-    "fami_tienehornomicroogas",        #Binaria
-    "fami_tieneserviciotv",            #Binaria
-    "fami_tieneautomovil",             #Binaria
-    "fami_tienemotocicleta",           #Binaria
-    "fami_tieneconsolavideojuegos",    #Binaria
+    "estu_pagomatriculabeca",         #Binaria
+    "estu_pagomatriculacredito",      #Binaria
+    "estu_pagomatriculapadres",    #Binaria
+    "estu_pagomatriculapropio",    #Binaria
+    "fami_educacionpadre",       #Categorica
+    "fami_educacionmadre",       #Categorica
+    "estu_horassemanatrabaja",     #Categorica
+    "fami_estratovivienda",      #Categorica
+    "fami_tieneinternet",       #Binaria
+    "fami_tienecomputador",      #Binaria
+    "fami_tienelavadora",       #Binaria
+    "fami_tienehornomicroogas",    #Binaria
+    "fami_tieneserviciotv",      #Binaria
+    "fami_tieneautomovil",       #Binaria
+    "fami_tienemotocicleta",      #Binaria
+    "fami_tieneconsolavideojuegos",  #Binaria
 ]
 
 try:
@@ -44,9 +46,9 @@ except ValueError as e:
     exit()
 
 
-#Preprocesamiento de datos
+# Preprocesamiento de datos
 
-#Puntaje global y periodo
+# Puntaje global y periodo
 if "punt_global" in df.columns:
     df["punt_global"] = pd.to_numeric(df["punt_global"], errors="coerce")
 else:
@@ -60,7 +62,7 @@ if "periodo" in df.columns:
 else:
     print(f"Advertencia: La columna 'periodo' no se encontró en el DataFrame.")
 
-#Columnas binarias
+# Columnas binarias
 binary_cols = [
     "estu_pagomatriculabeca", "estu_pagomatriculacredito",
     "estu_pagomatriculapadres", "estu_pagomatriculapropio",
@@ -83,7 +85,7 @@ for col in binary_cols:
     else:
         print(f"Advertencia: La columna binaria '{col}' no se encontró en el DataFrame.")
 
-#Columnas categoricas
+# Columnas categoricas
 education_order = {
     'no aplica': 0, 'no sabe': 0,
     'ninguno': 1,
@@ -104,7 +106,7 @@ for col in ["fami_educacionpadre", "fami_educacionmadre"]:
         df[col] = df[col].astype(str).str.strip().str.lower()
         df[col] = df[col].replace('primaria incompleta', 'primaria incompleta')
         df[col] = df[col].map(education_order)
-        df[col] = df[col].astype(float) 
+        df[col] = df[col].astype(float)
     else:
         print(f"Columna '{col}' no encontrada para mapeo.")
 
@@ -175,7 +177,7 @@ for col in imputable_numeric_cols:
         if col != "punt_global":
             df[col] = df[col].astype(int)
 
-#Eliminacion de nulos restantes
+# Eliminacion de nulos restantes
 original_rows = df.shape[0]
 if df.isnull().sum().sum() > 0:
     df.dropna(inplace=True)
@@ -186,7 +188,7 @@ if df.empty:
     exit()
 
 
-#Analisis de correlacion
+# Analisis de correlacion
 df_for_corr = df.drop(columns=["periodo"], errors="ignore")
 
 matriz_correlacion = df_for_corr.corr(numeric_only=True)
@@ -226,7 +228,7 @@ else:
     print("Error: No se encontraron variables con correlación para el modelo.")
     exit()
 
-#Division de datos
+# Division de datos
 variables_independientes_seleccionadas = top_n_variables
 
 X = df[variables_independientes_seleccionadas]
@@ -286,19 +288,23 @@ if y_test.isnull().sum() > 0:
     print(y_test.isnull().sum())
     exit()
 
-#Regresion lineal multiple
-modelo_rl = LinearRegression()
-modelo_rl.fit(X_train, y_train)
+# Escalar los datos
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
 
-y_pred = modelo_rl.predict(X_test)
+# Inicializar y entrenar el modelo KNN
+n_neighbors = int(np.sqrt(len(X_train_scaled)))
+if n_neighbors % 2 == 0: # Asegurarse de que sea impar para evitar empates en clasificacion
+    n_neighbors += 1
 
-print(f"\nCoeficientes: {modelo_rl.coef_}")
-print(f"Intercepto: {modelo_rl.intercept_}")
+modelo_knn = KNeighborsRegressor(n_neighbors=n_neighbors)
+modelo_knn.fit(X_train_scaled, y_train)
 
-ecuacion = f"ŷ = {modelo_rl.intercept_:.2f}"
-for i, col in enumerate(X_train.columns):
-    ecuacion += f" + {modelo_rl.coef_[i]:.4f} * {col}"
-print(f"\nEcuación de regresión: {ecuacion}")
+# Realizar predicciones
+y_pred_knn = modelo_knn.predict(X_test_scaled)
+
+print(f"\nModelo KNN entrenado con neighbors = {n_neighbors}")
 
 def categorize_score(score):
     if 0 <= score <= 60:
@@ -314,36 +320,35 @@ def categorize_score(score):
     else:
         return "Fuera de Rango"
 
-y_pred_category = np.vectorize(categorize_score)(y_pred)
+y_pred_category_knn = np.vectorize(categorize_score)(y_pred_knn)
 y_test_category = np.vectorize(categorize_score)(y_test)
 
-#Evaluacion de precision por categoria
-min_len = min(len(y_test_category), len(y_pred_category))
-accuracy_category = accuracy_score(y_test_category[:min_len], y_pred_category[:min_len])
+# Evaluación de precisión por categoria
+min_len_knn = min(len(y_test_category), len(y_pred_category_knn))
+accuracy_category_knn = accuracy_score(y_test_category[:min_len_knn], y_pred_category_knn[:min_len_knn])
 
-print(f"Porcentaje de exito basado en categoria: {accuracy_category:.4f}")
-mse = mean_squared_error(y_test, y_pred)
-rmse = np.sqrt(mse)
-print(f"Error Cuadrático Medio (MSE): {mse:.2f}")
-print(f"Raíz del Error Cuadratico Medio (RMSE): {rmse:.2f}")
+print(f"Porcentaje de éxito basado en categoría (KNN): {accuracy_category_knn:.4f}")
+mse_knn = mean_squared_error(y_test, y_pred_knn)
+rmse_knn = np.sqrt(mse_knn)
+print(f"Error Cuadrático Medio (MSE) para KNN: {mse_knn:.2f}")
+print(f"Raíz del Error Cuadratico Medio (RMSE) para KNN: {rmse_knn:.2f}")
 
-
-#Graficos de diagnostico
-residuals = y_test - y_pred
-standardized_residuals = residuals / np.std(residuals)
+# Gráficos de diagnóstico (adaptados para KNN)
+residuals_knn = y_test - y_pred_knn
+standardized_residuals_knn = residuals_knn / np.std(residuals_knn)
 
 plt.figure(figsize=(10, 7))
-sns.scatterplot(x=y_pred, y=standardized_residuals, alpha=0.6)
+sns.scatterplot(x=y_pred_knn, y=standardized_residuals_knn, alpha=0.6)
 plt.axhline(y=0, color="r", linestyle="--")
-plt.xlabel("Valores Ajustados (Predicciones)")
+plt.xlabel("Valores Ajustados (Predicciones KNN)")
 plt.ylabel("Residuos Estandarizados")
-plt.title("Residuos Estandarizados vs. Valores Ajustados")
+plt.title("Residuos Estandarizados vs. Valores Ajustados (KNN)")
 plt.grid(True, linestyle="--", alpha=0.7)
 plt.show()
 
 plt.figure(figsize=(8, 6))
-sm.qqplot(residuals, line="s", fit=True, ax=plt.gca())
-plt.title("Gráfica de Cuantiles Normales de los Residuos")
+sm.qqplot(residuals_knn, line="s", fit=True, ax=plt.gca())
+plt.title("Gráfica de Cuantiles Normales de los Residuos (KNN)")
 plt.xlabel("Cuantiles Teóricos Normales")
 plt.ylabel("Cuantiles de los Residuos Estandarizados")
 plt.grid(True, linestyle="--", alpha=0.7)
